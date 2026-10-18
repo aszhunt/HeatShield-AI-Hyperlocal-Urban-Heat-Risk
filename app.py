@@ -1,818 +1,383 @@
 
-import math
-from datetime import datetime, timezone
-
+import requests
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import requests
 import streamlit as st
-
-# ==========================================================
-# HEATSHIELD AI — Scientific Climate Intelligence Dashboard
-# Public Open-Meteo endpoints | No API key required
-# ==========================================================
+import pycountry
+from datetime import datetime, timezone
 
 st.set_page_config(
-    page_title="HeatShield AI",
-    page_icon="🌡️",
+    page_title="HeatShield AI | Global Climate",
+    page_icon="🌍",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 GEO_URL = "https://geocoding-api.open-meteo.com/v1/search"
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT = 25
 
-HOURLY_FIELDS = [
-    "temperature_2m",
-    "relative_humidity_2m",
-    "apparent_temperature",
-    "precipitation_probability",
-    "precipitation",
-    "wind_speed_10m",
-    "uv_index",
-    "cloud_cover",
-]
-
-# -------------------- PROFESSIONAL LIGHT THEME --------------------
+# -------------------- LIGHT SCIENTIFIC THEME --------------------
 
 st.markdown("""
 <style>
-:root {
-    --ink: #14263D;
-    --muted: #52657B;
-    --teal: #087E8B;
-    --border: #D5E0EB;
-    --panel: #FFFFFF;
-    --canvas: #F2F6FA;
-}
-
-.stApp {
-    background: var(--canvas);
-    color: var(--ink);
-    font-family: Arial, Helvetica, sans-serif;
-}
-
-[data-testid="stHeader"] {
-    background: rgba(242,246,250,.97);
-}
-
-[data-testid="stSidebar"] {
-    background: #FFFFFF;
-    border-right: 1px solid var(--border);
-}
-
-[data-testid="stSidebar"] * {
-    color: #20344B;
-}
-
-.block-container {
-    max-width: 1500px;
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-}
-
-h1, h2, h3, h4 {
-    color: #14263D !important;
-    font-weight: 750 !important;
-    letter-spacing: -.02em;
-}
-
-p, li, label {
-    color: #263A50;
-    line-height: 1.55;
-}
-
-[data-testid="stCaptionContainer"] {
-    color: #52657B !important;
-}
-
-.hs-hero {
-    background: linear-gradient(115deg, #FFFFFF, #E5F4F5);
-    border: 1px solid #C9DCE7;
-    border-left: 7px solid #087E8B;
-    border-radius: 15px;
-    padding: 28px 30px;
-    margin-bottom: 22px;
-    box-shadow: 0 5px 18px rgba(20,38,61,.05);
-}
-
-.hs-eyebrow {
-    color: #087E8B;
-    font-size: 12px;
-    letter-spacing: 2px;
-    font-weight: 800;
-}
-
-.hs-hero h1 {
-    color: #14263D !important;
-    font-size: clamp(28px, 3vw, 42px) !important;
-    margin: 9px 0;
-}
-
-.hs-hero p {
-    color: #344A60 !important;
-    font-size: 16px;
-    line-height: 1.65;
-    margin-bottom: 0;
-}
-
-.hs-card {
-    background: #FFFFFF;
-    border: 1px solid #D5E0EB;
-    border-radius: 12px;
-    padding: 17px;
-    margin-bottom: 12px;
-}
-
-.hs-note {
-    background: #FFFFFF;
-    border: 1px solid #D5E0EB;
-    border-radius: 10px;
-    padding: 14px;
-    color: #344A60;
-    line-height: 1.6;
-    font-size: 14px;
-}
-
+.stApp {background:#F2F6FA;color:#14263D}
+[data-testid="stHeader"] {background:#F2F6FA}
+[data-testid="stSidebar"] {background:#FFFFFF;border-right:1px solid #D5E0EB}
+.block-container {max-width:1500px;padding-top:1.5rem}
+h1,h2,h3,h4 {color:#14263D!important;font-weight:750!important}
+p,li,label {color:#263A50;line-height:1.55}
 [data-testid="stMetric"] {
-    background: #FFFFFF;
-    border: 1px solid #D5E0EB;
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 3px 10px rgba(20,38,61,.035);
+    background:#FFFFFF;border:1px solid #D5E0EB;
+    border-radius:12px;padding:16px
 }
-
-[data-testid="stMetricLabel"] {
-    color: #52657B !important;
-    font-size: 13px !important;
+[data-testid="stMetricLabel"] {color:#52657B!important}
+[data-testid="stMetricValue"] {color:#14263D!important;font-weight:800}
+.stButton>button,.stDownloadButton>button {
+    background:#087E8B;color:white!important;border:1px solid #087E8B;
+    border-radius:8px;min-height:42px;font-weight:700
 }
-
-[data-testid="stMetricValue"] {
-    color: #14263D !important;
-    font-size: clamp(22px, 2vw, 30px) !important;
-    font-weight: 800 !important;
+.stButton>button:hover,.stDownloadButton>button:hover {
+    background:#066570;color:white!important
 }
-
-[data-testid="stMetricDelta"] {
-    font-weight: 650;
+.hs-hero {
+    background:linear-gradient(110deg,#FFFFFF,#E5F4F5);
+    border:1px solid #C9DCE7;border-left:7px solid #087E8B;
+    border-radius:15px;padding:25px;margin-bottom:20px
 }
-
-.stButton > button,
-.stDownloadButton > button {
-    background: #087E8B;
-    color: #FFFFFF !important;
-    border: 1px solid #087E8B;
-    border-radius: 9px;
-    min-height: 43px;
-    font-weight: 750;
-}
-
-.stButton > button:hover,
-.stDownloadButton > button:hover {
-    background: #066570;
-    border-color: #066570;
-}
-
-button[data-baseweb="tab"] {
-    color: #344A60 !important;
-    font-weight: 700;
-}
-
-button[data-baseweb="tab"][aria-selected="true"] {
-    color: #087E8B !important;
-    border-bottom-color: #087E8B !important;
-}
-
-[data-baseweb="input"],
-[data-baseweb="select"] > div,
-[data-baseweb="textarea"] {
-    background: #FFFFFF !important;
-    border-color: #B9C9D9 !important;
-}
-
-input, textarea {
-    color: #172033 !important;
-}
-
-[data-testid="stDataFrame"] {
-    border: 1px solid #D5E0EB;
-    border-radius: 10px;
-    background: #FFFFFF;
-}
-
-[data-testid="stAlert"] {
-    border-radius: 10px;
-}
-
-hr {
-    border-color: #D5E0EB;
-}
-
-@media (max-width: 768px) {
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-    .hs-hero {
-        padding: 20px;
-    }
-}
+.hs-hero h1 {font-size:clamp(28px,3vw,42px)!important}
+.hs-muted {color:#52657B;font-size:14px;line-height:1.6}
+[data-testid="stDataFrame"] {background:#FFFFFF;border-radius:10px}
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<div class="hs-hero">
+  <h1>🌍 HeatShield AI</h1>
+  <p>GLOBAL CLIMATE INTELLIGENCE & HEAT SCREENING</p>
+  <div class="hs-muted">
+    Worldwide location search · Current weather · 7-day forecast ·
+    City comparison · Downloadable reports
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-# -------------------- API FUNCTIONS --------------------
+# -------------------- COUNTRIES: WORLDWIDE --------------------
+
+countries = sorted(
+    [(c.name, c.alpha_2) for c in pycountry.countries],
+    key=lambda item: item[0].casefold(),
+)
+
+country_names = ["All countries"] + [name for name, _ in countries]
+country_codes = {name: code for name, code in countries}
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def search_places(query):
-    response = requests.get(
-        GEO_URL,
-        params={
-            "name": query.strip(),
-            "count": 8,
-            "language": "en",
-            "format": "json",
-        },
-        timeout=TIMEOUT,
-    )
+def search_locations(city, country_code):
+    params = {
+        "name": city.strip(),
+        "count": 100,
+        "language": "en",
+        "format": "json",
+    }
+    if country_code:
+        params["countryCode"] = country_code
+
+    response = requests.get(GEO_URL, params=params, timeout=TIMEOUT)
     response.raise_for_status()
     return response.json().get("results", []) or []
 
-
-@st.cache_data(ttl=900, show_spinner=False)
-def get_forecast(latitude, longitude, timezone_name="auto"):
+@st.cache_data(ttl=600, show_spinner=False)
+def get_weather(lat, lon):
     params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "timezone": timezone_name,
+        "latitude": lat,
+        "longitude": lon,
+        "timezone": "auto",
         "forecast_days": 7,
         "current": (
             "temperature_2m,relative_humidity_2m,"
             "apparent_temperature,precipitation,"
             "wind_speed_10m,uv_index,cloud_cover"
         ),
-        "hourly": ",".join(HOURLY_FIELDS),
+        "hourly": (
+            "temperature_2m,apparent_temperature,"
+            "relative_humidity_2m,precipitation_probability,"
+            "precipitation,wind_speed_10m,uv_index,cloud_cover"
+        ),
         "daily": (
             "weather_code,temperature_2m_max,temperature_2m_min,"
             "apparent_temperature_max,precipitation_probability_max,"
             "precipitation_sum,uv_index_max,wind_speed_10m_max"
         ),
     }
-
-    response = requests.get(
-        FORECAST_URL,
-        params=params,
-        timeout=TIMEOUT,
-    )
+    response = requests.get(WEATHER_URL, params=params, timeout=TIMEOUT)
     response.raise_for_status()
-    result = response.json()
+    data = response.json()
+    if "current" not in data or "hourly" not in data:
+        raise ValueError("Weather provider returned incomplete data.")
+    return data
 
-    if "hourly" not in result or "daily" not in result:
-        raise ValueError("Forecast data was incomplete.")
-
-    return result
-
-
-# -------------------- DATA PROCESSING --------------------
-
-def place_name(place):
+def location_label(place):
     parts = [place.get("name", "Unknown")]
-    if place.get("admin1") and place["admin1"] != parts[0]:
-        parts.append(place["admin1"])
-    if place.get("country"):
-        parts.append(place["country"])
+    for key in ("admin1", "country"):
+        value = place.get(key)
+        if value and value not in parts:
+            parts.append(value)
     return ", ".join(parts)
 
+def heat_screening_score(hourly):
+    # Heuristic for dashboard screening, not an official heat index.
+    apparent = pd.to_numeric(
+        hourly["apparent_temperature"], errors="coerce"
+    ).fillna(pd.to_numeric(hourly["temperature_2m"], errors="coerce"))
+    humidity = pd.to_numeric(
+        hourly["relative_humidity_2m"], errors="coerce"
+    ).fillna(50)
+    uv = pd.to_numeric(
+        hourly["uv_index"], errors="coerce"
+    ).fillna(0)
+    wind = pd.to_numeric(
+        hourly["wind_speed_10m"], errors="coerce"
+    ).fillna(10)
 
-def weather_description(code):
-    try:
-        code = int(code)
-    except (ValueError, TypeError):
-        return "Unknown"
-
-    codes = {
-        0: "Clear sky",
-        1: "Mainly clear",
-        2: "Partly cloudy",
-        3: "Overcast",
-        45: "Fog",
-        48: "Rime fog",
-        51: "Light drizzle",
-        53: "Drizzle",
-        55: "Dense drizzle",
-        56: "Freezing drizzle",
-        57: "Freezing drizzle",
-        61: "Light rain",
-        63: "Moderate rain",
-        65: "Heavy rain",
-        66: "Freezing rain",
-        67: "Heavy freezing rain",
-        71: "Light snow",
-        73: "Snow",
-        75: "Heavy snow",
-        77: "Snow grains",
-        80: "Rain showers",
-        81: "Rain showers",
-        82: "Heavy rain showers",
-        85: "Snow showers",
-        86: "Heavy snow showers",
-        95: "Thunderstorm",
-        96: "Thunderstorm with hail",
-        99: "Thunderstorm with hail",
-    }
-    return codes.get(code, "Unknown conditions")
-
-
-def score_band(score):
-    if pd.isna(score):
-        return "Unavailable"
-    if score < 25:
-        return "Lower screening level"
-    if score < 50:
-        return "Moderate screening level"
-    if score < 75:
-        return "Elevated screening level"
-    return "High screening level"
-
-
-def number(value, digits=1, suffix=""):
-    try:
-        value = float(value)
-        if not math.isfinite(value):
-            return "N/A"
-        return f"{value:.{digits}f}{suffix}"
-    except (ValueError, TypeError):
-        return "N/A"
-
-
-def hourly_frame(weather):
-    frame = pd.DataFrame(weather["hourly"])
-    frame["time"] = pd.to_datetime(frame["time"], errors="coerce")
-
-    for column in frame.columns:
-        if column != "time":
-            frame[column] = pd.to_numeric(
-                frame[column], errors="coerce"
-            )
-
-    apparent = frame["apparent_temperature"].fillna(
-        frame["temperature_2m"]
-    )
-    humidity = frame["relative_humidity_2m"].fillna(50)
-    uv = frame["uv_index"].fillna(0)
-    wind = frame["wind_speed_10m"].fillna(10)
-
-    # Transparent heuristic, not an official heat-stress index.
     thermal = ((apparent - 24) / 16 * 65).clip(0, 65)
     humidity_part = ((humidity - 40) / 60 * 20).clip(0, 20)
     uv_part = (uv / 11 * 10).clip(0, 10)
     wind_part = ((12 - wind) / 12 * 5).clip(0, 5)
 
-    frame["heat_score"] = (
-        thermal + humidity_part + uv_part + wind_part
-    ).clip(0, 100).round(0)
+    return (thermal + humidity_part + uv_part + wind_part).clip(0, 100)
 
-    frame["screening_band"] = frame["heat_score"].apply(score_band)
-    return frame
+def weather_description(code):
+    descriptions = {
+        0: "Clear", 1: "Mainly clear", 2: "Partly cloudy",
+        3: "Overcast", 45: "Fog", 48: "Rime fog",
+        51: "Light drizzle", 53: "Drizzle", 55: "Dense drizzle",
+        61: "Light rain", 63: "Moderate rain", 65: "Heavy rain",
+        71: "Light snow", 73: "Snow", 75: "Heavy snow",
+        80: "Rain showers", 81: "Rain showers",
+        82: "Heavy showers", 95: "Thunderstorm",
+        96: "Thunderstorm with hail", 99: "Thunderstorm with hail",
+    }
+    try:
+        return descriptions.get(int(code), "Other conditions")
+    except (ValueError, TypeError):
+        return "Unknown"
 
+def safe_num(value, suffix="", digits=1):
+    try:
+        if pd.isna(value):
+            return "N/A"
+        return f"{float(value):.{digits}f}{suffix}"
+    except (TypeError, ValueError):
+        return "N/A"
 
-def daily_frame(weather):
-    frame = pd.DataFrame(weather["daily"])
-    frame["time"] = pd.to_datetime(frame["time"], errors="coerce")
+# -------------------- SEARCH CONTROLS --------------------
 
-    for column in frame.columns:
-        if column != "time":
-            frame[column] = pd.to_numeric(
-                frame[column], errors="coerce"
-            )
+st.sidebar.header("🌐 Global location finder")
 
-    frame["conditions"] = frame["weather_code"].apply(
-        weather_description
-    )
-    return frame
+selected_country = st.sidebar.selectbox(
+    "1. Select country",
+    country_names,
+    index=country_names.index("Pakistan"),
+)
 
+city_query = st.sidebar.text_input(
+    "2. Type a city or place",
+    placeholder="e.g. Sialkot, London, Tokyo",
+)
 
-def styled_chart(fig, height=370):
-    fig.update_layout(
-        template="plotly_white",
-        paper_bgcolor="#FFFFFF",
-        plot_bgcolor="#FFFFFF",
-        font=dict(
-            family="Arial, sans-serif",
-            color="#263A50",
-            size=13,
-        ),
-        title_font=dict(color="#14263D", size=19),
-        height=height,
-        margin=dict(l=15, r=15, t=60, b=15),
-        hoverlabel=dict(
-            bgcolor="#FFFFFF",
-            font_color="#14263D",
-            bordercolor="#B9C9D9",
-        ),
-        legend=dict(
-            bgcolor="rgba(255,255,255,0.9)",
-            font=dict(color="#263A50"),
-        ),
-    )
-    fig.update_xaxes(
-        gridcolor="#E2E8F0",
-        linecolor="#CBD5E1",
-        tickfont=dict(color="#344A60"),
-        title_font=dict(color="#344A60"),
-    )
-    fig.update_yaxes(
-        gridcolor="#E2E8F0",
-        linecolor="#CBD5E1",
-        tickfont=dict(color="#344A60"),
-        title_font=dict(color="#344A60"),
-    )
-    return fig
+search_clicked = st.sidebar.button(
+    "🔎 Find matching locations",
+    use_container_width=True,
+)
 
+st.sidebar.caption(
+    "Choose any country, then type a city. Matching results are loaded "
+    "from worldwide geocoding data."
+)
 
-def report_text(label, current, hourly, daily, threshold):
-    current_score = (
-        hourly["heat_score"].iloc[0]
-        if not hourly.empty else float("nan")
-    )
-    alerts = hourly[hourly["heat_score"] >= threshold]
+st.sidebar.divider()
+st.sidebar.header("Heat alerts")
 
-    lines = [
-        "HEATSHIELD AI — CLIMATE SCREENING REPORT",
-        "=" * 48,
-        f"Location: {label}",
-        "Generated UTC: " + datetime.now(
-            timezone.utc
-        ).strftime("%Y-%m-%d %H:%M"),
-        "Source: Open-Meteo public forecast API",
-        "",
-        "CURRENT CONDITIONS",
-        f"Air temperature: {number(current.get('temperature_2m'), 1, ' °C')}",
-        f"Feels like: {number(current.get('apparent_temperature'), 1, ' °C')}",
-        f"Humidity: {number(current.get('relative_humidity_2m'), 0, '%')}",
-        f"Wind speed: {number(current.get('wind_speed_10m'), 1, ' km/h')}",
-        f"UV index: {number(current.get('uv_index'), 1)}",
-        "",
-        "SCREENING ESTIMATE",
-        f"Score: {number(current_score, 0)} / 100",
-        f"User threshold: {threshold}/100",
-        f"Forecast hours above threshold: {len(alerts)}",
-        "",
-        "LIMITATIONS",
-        "The screening score is a heuristic, not a validated medical index or official warning.",
-        "Forecast grid values are not street-level sensor measurements.",
-        "Use local official weather and public-health guidance for safety decisions.",
-        "",
-        "7-DAY FORECAST",
-    ]
+threshold = st.sidebar.slider(
+    "Screening threshold",
+    min_value=10,
+    max_value=95,
+    value=60,
+    step=5,
+)
 
-    for _, row in daily.iterrows():
-        day = (
-            row["time"].strftime("%Y-%m-%d")
-            if pd.notna(row["time"]) else "Unknown"
+if "matches" not in st.session_state:
+    st.session_state.matches = []
+if "selected_place" not in st.session_state:
+    st.session_state.selected_place = None
+if "weather" not in st.session_state:
+    st.session_state.weather = None
+if "weather_place" not in st.session_state:
+    st.session_state.weather_place = None
+if "search_message" not in st.session_state:
+    st.session_state.search_message = ""
+
+if search_clicked:
+    if len(city_query.strip()) < 2:
+        st.session_state.search_message = (
+            "Please type at least two characters of a city or place name."
         )
-        lines.append(
-            f"{day}: high {number(row.get('temperature_2m_max'), 1, ' °C')}, "
-            f"low {number(row.get('temperature_2m_min'), 1, ' °C')}, "
-            f"feels-like high {number(row.get('apparent_temperature_max'), 1, ' °C')}, "
-            f"{row.get('conditions', 'Unknown')}"
-        )
-
-    return "\n".join(lines)
-
-
-# -------------------- SESSION STATE --------------------
-
-defaults = {
-    "query": "Sialkot",
-    "weather": None,
-    "place": None,
-    "hourly": None,
-    "daily": None,
-    "loaded_query": None,
-    "load_error": None,
-    "comparisons": [],
-    "comparison_errors": [],
-}
-
-for key, value in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
-
-
-# -------------------- HEADER --------------------
-
-st.markdown("""
-<div class="hs-hero">
-    <div class="hs-eyebrow">CLIMATE INTELLIGENCE • RESEARCH PLATFORM</div>
-    <h1>🌡️ HeatShield AI</h1>
-    <p>
-      Explore weather forecasts, compare locations, inspect heat-screening
-      alerts and export climate summaries in a clear scientific workspace.
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-
-# -------------------- SIDEBAR --------------------
-
-with st.sidebar:
-    st.markdown("## Control centre")
-
-    query = st.text_input(
-        "Search city or place",
-        value=st.session_state.query,
-        placeholder="e.g. Sialkot, Lahore, Karachi",
-    )
-
-    threshold = st.slider(
-        "Screening alert threshold",
-        min_value=10,
-        max_value=95,
-        value=60,
-        step=5,
-        help="Threshold for this app's heuristic score, not an official warning level.",
-    )
-
-    st.markdown("---")
-    st.markdown("### Hotspot comparison")
-    compare_text = st.text_area(
-        "Cities (one per line)",
-        value="Lahore\nKarachi\nIslamabad",
-        height=115,
-    )
-
-    refresh = st.button(
-        "↻ Refresh forecast",
-        use_container_width=True,
-    )
-
-    st.markdown("---")
-    st.caption("DATA SOURCE")
-    st.caption("Open-Meteo public forecast and geocoding APIs.")
-    st.caption("No API key is required for these public endpoints.")
-    st.caption(
-        "The heat score is a screening estimate, not a validated medical index."
-    )
-
-
-# -------------------- LOAD FORECAST --------------------
-
-if query.strip():
-    should_load = (
-        refresh
-        or st.session_state.weather is None
-        or st.session_state.loaded_query != query.strip().lower()
-    )
-
-    if should_load:
+        st.session_state.matches = []
+    else:
         try:
-            with st.spinner("Loading location and forecast data…"):
-                places = search_places(query.strip())
-
-                if not places:
-                    raise ValueError(
-                        "Place not found. Try a larger city or check spelling."
-                    )
-
-                place = places[0]
-                weather = get_forecast(
-                    float(place["latitude"]),
-                    float(place["longitude"]),
-                    place.get("timezone", "auto") or "auto",
+            with st.spinner("Searching worldwide locations..."):
+                code = (
+                    country_codes.get(selected_country)
+                    if selected_country != "All countries"
+                    else None
                 )
-
-                st.session_state.place = place
-                st.session_state.weather = weather
-                st.session_state.hourly = hourly_frame(weather)
-                st.session_state.daily = daily_frame(weather)
-                st.session_state.loaded_query = query.strip().lower()
-                st.session_state.load_error = None
-
+                found = search_locations(city_query, code)
+                st.session_state.matches = found
+                st.session_state.search_message = (
+                    f"{len(found)} matching location(s) returned."
+                    if found else
+                    "No matches found. Try another spelling or choose All countries."
+                )
         except requests.RequestException as exc:
-            st.session_state.load_error = (
-                f"Network/API request failed: {exc}"
-            )
-        except (ValueError, KeyError, TypeError) as exc:
-            st.session_state.load_error = str(exc)
+            st.session_state.search_message = f"Location search failed: {exc}"
+            st.session_state.matches = []
 
-if st.session_state.load_error:
-    st.error(st.session_state.load_error)
+if st.session_state.search_message:
+    st.info(st.session_state.search_message)
 
+matches = st.session_state.matches
+
+# The results are selectable and include country and region where available.
+if matches:
+    labels = [location_label(p) for p in matches]
+    chosen_label = st.selectbox(
+        "3. Select the exact location",
+        labels,
+        key="location_result_selector",
+    )
+    chosen_place = matches[labels.index(chosen_label)]
+
+    if st.button("🌦️ Load selected location weather", type="primary"):
+        try:
+            with st.spinner("Loading current conditions and forecast..."):
+                data = get_weather(
+                    float(chosen_place["latitude"]),
+                    float(chosen_place["longitude"]),
+                )
+                st.session_state.weather = data
+                st.session_state.weather_place = chosen_place
+                st.session_state.selected_place = chosen_place
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            st.error(f"Could not load weather: {exc}")
+
+# Load an initial city so the dashboard is not empty on first open.
 if st.session_state.weather is None:
-    st.info("Enter a city in the sidebar to load its forecast.")
-    st.stop()
-
+    try:
+        initial = search_locations("Sialkot", "PK")
+        if initial:
+            p = initial[0]
+            st.session_state.weather = get_weather(
+                float(p["latitude"]), float(p["longitude"])
+            )
+            st.session_state.weather_place = p
+            st.session_state.selected_place = p
+    except (requests.RequestException, ValueError, KeyError):
+        pass
 
 weather = st.session_state.weather
-place = st.session_state.place
-hourly = st.session_state.hourly
-daily = st.session_state.daily
-current = weather.get("current", {})
-location = place_name(place)
+place = st.session_state.weather_place
+
+if weather is None or place is None:
+    st.warning("Search for a location above to load weather data.")
+    st.stop()
+
+current = weather["current"]
+hourly = pd.DataFrame(weather["hourly"])
+daily = pd.DataFrame(weather["daily"])
+
+hourly["time"] = pd.to_datetime(hourly["time"], errors="coerce")
+daily["time"] = pd.to_datetime(daily["time"], errors="coerce")
+hourly["heat_score"] = heat_screening_score(hourly)
+hourly["screening_band"] = pd.cut(
+    hourly["heat_score"],
+    bins=[-1, 25, 50, 75, 100],
+    labels=[
+        "Lower screening level",
+        "Moderate screening level",
+        "Elevated screening level",
+        "High screening level",
+    ],
+)
+
+location = location_label(place)
+
+# -------------------- MAIN DASHBOARD --------------------
+
+st.markdown(f"## 📍 {location}")
+st.caption(
+    f"Local timezone: {weather.get('timezone', 'provider timezone')} · "
+    f"Latitude {float(place['latitude']):.3f}, "
+    f"longitude {float(place['longitude']):.3f}"
+)
+
+st.caption(
+    "Forecast provider data · Retrieved when requested · "
+    "Not a street-level sensor feed"
+)
 
 current_score = (
-    float(hourly["heat_score"].iloc[0])
-    if not hourly.empty else float("nan")
-)
-alert_hours = hourly[hourly["heat_score"] >= threshold]
-
-st.markdown(f"### 📍 {location}")
-st.caption(
-    f"Timezone: {weather.get('timezone', 'Provider local time')} · "
-    f"Coordinates: {float(place['latitude']):.3f}, "
-    f"{float(place['longitude']):.3f}"
+    float(hourly["heat_score"].iloc[0]) if not hourly.empty else 0
 )
 
+a, b, c, d, e = st.columns(5)
+a.metric("Air temperature", safe_num(current.get("temperature_2m"), " °C"))
+b.metric("Feels like", safe_num(current.get("apparent_temperature"), " °C"))
+c.metric("Humidity", safe_num(current.get("relative_humidity_2m"), "%", 0))
+d.metric("Wind speed", safe_num(current.get("wind_speed_10m"), " km/h"))
+e.metric("Heat screening score", f"{current_score:.0f}/100")
 
-# -------------------- KPI CARDS --------------------
-
-m1, m2, m3, m4, m5 = st.columns(5)
-
-m1.metric(
-    "Air temperature",
-    number(current.get("temperature_2m"), 1, " °C"),
-)
-m2.metric(
-    "Feels like",
-    number(current.get("apparent_temperature"), 1, " °C"),
-)
-m3.metric(
-    "Humidity",
-    number(current.get("relative_humidity_2m"), 0, "%"),
-)
-m4.metric(
-    "UV index",
-    number(current.get("uv_index"), 1),
-)
-m5.metric(
-    "Heat screening score",
-    number(current_score, 0, "/100"),
-)
-
-if pd.notna(current_score) and current_score >= threshold:
-    st.warning(
-        f"Screening threshold reached: {current_score:.0f}/100. "
-        "Check official local heat guidance."
-    )
-else:
-    st.info(
-        "The current screening estimate is below your chosen threshold. "
-        "This does not guarantee that conditions are safe."
-    )
-
-
-# -------------------- DASHBOARD TABS --------------------
-
-overview, forecast_tab, hotspots, alerts, reports, methodology = st.tabs([
+tabs = st.tabs([
     "Overview",
-    "Forecast",
-    "Hotspot comparison",
+    "7-day forecast",
+    "Hourly data",
     "Alerts",
-    "Reports & export",
-    "Methodology",
+    "Reports",
+    "Compare cities",
 ])
-
 
 # -------------------- OVERVIEW --------------------
 
-with overview:
-    st.markdown("## Heat outlook")
-
-    left, right = st.columns([1.5, 1])
+with tabs[0]:
+    left, right = st.columns(2)
 
     with left:
-        fig = go.Figure()
-
-        fig.add_trace(go.Scatter(
-            x=hourly["time"],
-            y=hourly["temperature_2m"],
-            name="Air temperature",
-            mode="lines",
-            line=dict(color="#087E8B", width=3),
-        ))
-
-        fig.add_trace(go.Scatter(
-            x=hourly["time"],
-            y=hourly["apparent_temperature"],
-            name="Feels like",
-            mode="lines",
-            line=dict(color="#D97706", width=3, dash="dot"),
-        ))
-
+        fig = px.line(
+            hourly,
+            x="time",
+            y=["temperature_2m", "apparent_temperature"],
+            title="Air temperature vs feels-like temperature",
+            labels={
+                "time": "Local time",
+                "value": "Temperature (°C)",
+                "variable": "Variable",
+            },
+        )
         fig.update_layout(
-            title="Air temperature vs apparent temperature",
-            xaxis_title="Local time",
-            yaxis_title="Temperature (°C)",
-            hovermode="x unified",
+            template="plotly_white",
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FFFFFF",
+            font_color="#263A50",
         )
-
-        st.plotly_chart(
-            styled_chart(fig, 390),
-            use_container_width=True,
-        )
+        st.plotly_chart(fig, use_container_width=True)
 
     with right:
-        fig = go.Figure()
-
-        fig.add_trace(go.Scatter(
-            x=hourly["time"],
-            y=hourly["heat_score"],
-            name="Screening score",
-            mode="lines",
-            line=dict(color="#B45309", width=3),
-            fill="tozeroy",
-            fillcolor="rgba(217,119,6,0.12)",
-        ))
-
-        fig.add_hline(
-            y=threshold,
-            line_dash="dash",
-            line_color="#B91C1C",
-            annotation_text="Selected threshold",
-        )
-
-        fig.update_layout(
+        fig = px.line(
+            hourly,
+            x="time",
+            y="heat_score",
             title="Heat screening estimate",
-            xaxis_title="Local time",
-            yaxis_title="Score (0–100)",
-            yaxis_range=[0, 100],
+            labels={"time": "Local time", "heat_score": "Score / 100"},
         )
-
-        st.plotly_chart(
-            styled_chart(fig, 390),
-            use_container_width=True,
-        )
-
-    st.markdown("## 7-day forecast")
-
-    daily_table = daily.copy()
-    daily_table["Date"] = daily_table["time"].dt.strftime("%a, %d %b")
-
-    daily_table = daily_table.rename(columns={
-        "temperature_2m_max": "High °C",
-        "temperature_2m_min": "Low °C",
-        "apparent_temperature_max": "Feels-like high °C",
-        "precipitation_probability_max": "Rain chance %",
-        "uv_index_max": "Max UV",
-        "wind_speed_10m_max": "Max wind km/h",
-        "conditions": "Conditions",
-    })
-
-    display_cols = [
-        "Date",
-        "High °C",
-        "Low °C",
-        "Feels-like high °C",
-        "Rain chance %",
-        "Max UV",
-        "Max wind km/h",
-        "Conditions",
-    ]
-
-    st.dataframe(
-        daily_table[display_cols].round(1),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-# -------------------- FORECAST EXPLORER --------------------
-
-with forecast_tab:
-    st.markdown("## Forecast explorer")
-
-    options = {
-        "Apparent temperature (°C)": ("apparent_temperature", "°C", "#D97706"),
-        "Air temperature (°C)": ("temperature_2m", "°C", "#087E8B"),
-        "Relative humidity (%)": ("relative_humidity_2m", "%", "#2563EB"),
-        "Rain probability (%)": ("precipitation_probability", "%", "#4F46E5"),
-        "Wind speed (km/h)": ("wind_speed_10m", "km/h", "#0F766E"),
-        "UV index": ("uv_index", "Index", "#B45309"),
-        "Cloud cover (%)": ("cloud_cover", "%", "#64748B"),
-        "Heat screening score": ("heat_score", "Score / 100", "#B45309"),
-    }
-
-    selected_metric = st.selectbox(
-        "Forecast variable",
-        list(options.keys()),
-    )
-
-    field, unit, color = options[selected_metric]
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=hourly["time"],
-        y=hourly[field],
-        mode="lines",
-        name=selected_metric,
-        line=dict(color=color, width=3),
-    ))
-
-    if field == "heat_score":
         fig.add_hline(
             y=threshold,
             line_dash="dash",
@@ -820,374 +385,294 @@ with forecast_tab:
             annotation_text="Selected threshold",
         )
         fig.update_yaxes(range=[0, 100])
+        fig.update_layout(
+            template="plotly_white",
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FFFFFF",
+            font_color="#263A50",
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    fig.update_layout(
-        title=selected_metric,
-        xaxis_title="Local time",
-        yaxis_title=unit,
-        hovermode="x unified",
-    )
-
-    st.plotly_chart(
-        styled_chart(fig, 440),
-        use_container_width=True,
-    )
-
-    st.markdown("### Hourly forecast records")
-
-    hourly_table = hourly.copy()
-    hourly_table["time"] = hourly_table["time"].dt.strftime(
-        "%Y-%m-%d %H:%M"
-    )
-
+    st.markdown("### Today's hourly outlook")
     st.dataframe(
-        hourly_table,
+        hourly[[
+            "time", "temperature_2m", "apparent_temperature",
+            "relative_humidity_2m", "precipitation_probability",
+            "wind_speed_10m", "uv_index", "heat_score",
+        ]].head(24).round(1),
         use_container_width=True,
         hide_index=True,
     )
 
+# -------------------- 7-DAY FORECAST --------------------
 
-# -------------------- HOTSPOT COMPARISON --------------------
+with tabs[1]:
+    st.markdown("### Seven-day weather outlook")
 
-with hotspots:
-    st.markdown("## Location comparison")
+    daily["Conditions"] = daily["weather_code"].apply(weather_description)
+    daily["Date"] = daily["time"].dt.strftime("%a, %d %b")
 
-    st.markdown("""
-    <div class="hs-note">
-    Compare forecast conditions at different geocoded locations.
-    This is a comparison of forecast values, not direct measurement of
-    urban heat islands or street-level surface temperatures.
-    </div>
-    """, unsafe_allow_html=True)
+    columns = {
+        "Date": "Date",
+        "temperature_2m_max": "High °C",
+        "temperature_2m_min": "Low °C",
+        "apparent_temperature_max": "Feels-like high °C",
+        "precipitation_probability_max": "Rain chance %",
+        "precipitation_sum": "Rain mm",
+        "uv_index_max": "Max UV",
+        "wind_speed_10m_max": "Max wind km/h",
+        "Conditions": "Conditions",
+    }
 
-    if st.button("Run location comparison", type="primary"):
-        names = []
-        for raw in compare_text.splitlines():
-            name = raw.strip()
-            if name and name.casefold() not in [
-                existing.casefold() for existing in names
-            ]:
-                names.append(name)
+    forecast_table = daily[list(columns.keys())].rename(columns=columns)
+    st.dataframe(
+        forecast_table.round(1),
+        use_container_width=True,
+        hide_index=True,
+    )
 
-        names = names[:8]
-        results = []
-        errors = []
+    fig = px.bar(
+        daily,
+        x="time",
+        y=["temperature_2m_max", "temperature_2m_min"],
+        barmode="group",
+        title="Daily minimum and maximum temperatures",
+        labels={"time": "Date", "value": "Temperature (°C)", "variable": "Measure"},
+    )
+    fig.update_layout(template="plotly_white", font_color="#263A50")
+    st.plotly_chart(fig, use_container_width=True)
 
-        if not names:
-            st.warning("Enter at least one city in the sidebar.")
-        else:
-            progress = st.progress(0)
+# -------------------- HOURLY DATA --------------------
 
-            for index, name in enumerate(names):
-                try:
-                    matches = search_places(name)
+with tabs[2]:
+    st.markdown("### Forecast variables")
 
-                    if not matches:
-                        errors.append(f"{name}: no matching place found.")
-                    else:
-                        loc = matches[0]
-                        fc = get_forecast(
-                            float(loc["latitude"]),
-                            float(loc["longitude"]),
-                            loc.get("timezone", "auto") or "auto",
-                        )
+    variable_map = {
+        "Air temperature (°C)": "temperature_2m",
+        "Feels-like temperature (°C)": "apparent_temperature",
+        "Humidity (%)": "relative_humidity_2m",
+        "Rain probability (%)": "precipitation_probability",
+        "Wind speed (km/h)": "wind_speed_10m",
+        "UV index": "uv_index",
+        "Cloud cover (%)": "cloud_cover",
+        "Heat screening score": "heat_score",
+    }
 
-                        hf = hourly_frame(fc)
-                        cur = fc.get("current", {})
+    selected_variable = st.selectbox(
+        "Choose a variable",
+        list(variable_map.keys()),
+    )
+    field = variable_map[selected_variable]
 
-                        score = (
-                            float(hf["heat_score"].iloc[0])
-                            if not hf.empty else float("nan")
-                        )
+    fig = px.line(
+        hourly,
+        x="time",
+        y=field,
+        title=selected_variable,
+        labels={"time": "Local time", field: selected_variable},
+    )
+    if field == "heat_score":
+        fig.add_hline(y=threshold, line_dash="dash", line_color="#B91C1C")
+        fig.update_yaxes(range=[0, 100])
 
-                        results.append({
-                            "Location": place_name(loc),
-                            "Latitude": float(loc["latitude"]),
-                            "Longitude": float(loc["longitude"]),
-                            "Air temp °C": cur.get("temperature_2m"),
-                            "Feels like °C": cur.get("apparent_temperature"),
-                            "Humidity %": cur.get("relative_humidity_2m"),
-                            "Wind km/h": cur.get("wind_speed_10m"),
-                            "UV index": cur.get("uv_index"),
-                            "Screening score": score,
-                            "Screening band": score_band(score),
-                        })
-
-                except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
-                    errors.append(f"{name}: {exc}")
-
-                progress.progress((index + 1) / len(names))
-
-            st.session_state.comparisons = results
-            st.session_state.comparison_errors = errors
-            progress.empty()
-
-    results = st.session_state.comparisons
-    errors = st.session_state.comparison_errors
-
-    if errors:
-        with st.expander(f"Locations not loaded: {len(errors)}"):
-            for error in errors:
-                st.write("• " + error)
-
-    if results:
-        comparison_df = pd.DataFrame(results).sort_values(
-            "Screening score",
-            ascending=False,
-            na_position="last",
-        )
-
-        st.markdown("### Comparison ranking")
-
-        st.dataframe(
-            comparison_df.round(2),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        fig = px.bar(
-            comparison_df,
-            x="Screening score",
-            y="Location",
-            orientation="h",
-            color="Screening score",
-            color_continuous_scale=[
-                "#A7DAD5",
-                "#F6C56F",
-                "#C2413B",
-            ],
-            range_color=[0, 100],
-            title="Current forecast screening comparison",
-            hover_data=[
-                "Air temp °C",
-                "Feels like °C",
-                "Humidity %",
-                "UV index",
-            ],
-        )
-
-        fig.update_layout(
-            xaxis_title="Screening score / 100",
-            yaxis_title="",
-            yaxis={"categoryorder": "total ascending"},
-        )
-
-        st.plotly_chart(
-            styled_chart(fig, max(350, 65 * len(comparison_df))),
-            use_container_width=True,
-        )
-
-        map_fig = px.scatter_geo(
-            comparison_df,
-            lat="Latitude",
-            lon="Longitude",
-            color="Screening score",
-            size="Screening score",
-            hover_name="Location",
-            hover_data=[
-                "Air temp °C",
-                "Feels like °C",
-                "Screening band",
-            ],
-            color_continuous_scale=[
-                "#A7DAD5",
-                "#F6C56F",
-                "#C2413B",
-            ],
-            range_color=[0, 100],
-            title="Geographic comparison",
-        )
-
-        map_fig.update_geos(
-            showland=True,
-            landcolor="#F1F5F9",
-            showocean=True,
-            oceancolor="#EAF3FA",
-            showcountries=True,
-            countrycolor="#B9C9D9",
-        )
-
-        st.plotly_chart(
-            styled_chart(map_fig, 430),
-            use_container_width=True,
-        )
-
-        st.download_button(
-            "Download comparison CSV",
-            data=comparison_df.to_csv(index=False).encode("utf-8"),
-            file_name="heatshield_comparison.csv",
-            mime="text/csv",
-        )
-    else:
-        st.info("Click 'Run location comparison' to generate the ranking and map.")
-
+    fig.update_layout(template="plotly_white", font_color="#263A50")
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(hourly, use_container_width=True, hide_index=True)
 
 # -------------------- ALERTS --------------------
 
-with alerts:
-    st.markdown("## Forecast screening alerts")
-
+with tabs[3]:
+    st.markdown("### Configurable forecast threshold alerts")
     st.caption(
-        "These are app-generated threshold alerts, not official weather warnings."
+        "These alerts are generated by the dashboard's heuristic. "
+        "They are not official weather warnings."
     )
 
-    c1, c2, c3 = st.columns(3)
+    alert_hours = hourly[hourly["heat_score"] >= threshold]
 
-    c1.metric("Your threshold", f"{threshold}/100")
-    c2.metric("Hours meeting threshold", len(alert_hours))
-    c3.metric(
-        "Highest forecast score",
-        number(hourly["heat_score"].max(), 0, "/100"),
-    )
+    x, y = st.columns(2)
+    x.metric("Chosen threshold", f"{threshold}/100")
+    y.metric("Forecast hours at or above threshold", len(alert_hours))
 
     if not alert_hours.empty:
         st.warning(
-            "Some forecast hours meet or exceed your selected screening threshold."
+            "Some forecast hours meet your selected threshold. "
+            "Review official local weather and public-health guidance."
         )
-
-        alert_table = alert_hours[[
-            "time",
-            "temperature_2m",
-            "apparent_temperature",
-            "relative_humidity_2m",
-            "uv_index",
-            "wind_speed_10m",
-            "heat_score",
-            "screening_band",
-        ]].copy()
-
-        alert_table["time"] = alert_table["time"].dt.strftime(
-            "%Y-%m-%d %H:%M"
-        )
-
         st.dataframe(
-            alert_table,
+            alert_hours[[
+                "time", "temperature_2m", "apparent_temperature",
+                "relative_humidity_2m", "uv_index", "heat_score",
+            ]].round(1),
             use_container_width=True,
             hide_index=True,
         )
-
         st.download_button(
-            "Download alert hours CSV",
-            data=alert_table.to_csv(index=False).encode("utf-8"),
-            file_name="heatshield_alert_hours.csv",
+            "Download alert-hours CSV",
+            alert_hours.to_csv(index=False).encode("utf-8"),
+            file_name="heatshield_alerts.csv",
             mime="text/csv",
         )
     else:
         st.success(
-            "No forecast hours meet your selected threshold. "
-            "This does not guarantee that conditions are safe."
+            "No forecast hours meet this threshold. This does not guarantee safety."
         )
 
-    st.markdown("""
-    <div class="hs-note">
-    Alerts are calculated from the loaded forecast when the dashboard runs.
-    No background monitoring, SMS, email or push notifications are configured.
-    Follow official local weather and public-health guidance.
-    </div>
-    """, unsafe_allow_html=True)
+# -------------------- REPORTS --------------------
 
+with tabs[4]:
+    st.markdown("### Export climate data")
 
-# -------------------- REPORTS & EXPORT --------------------
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    report = f"""
+HEATSHIELD AI — CLIMATE SCREENING REPORT
+Location: {location}
+Generated: {generated}
+Source: Open-Meteo public forecast API
 
-with reports:
-    st.markdown("## Reports & data export")
+CURRENT CONDITIONS
+Air temperature: {safe_num(current.get('temperature_2m'), ' °C')}
+Feels like: {safe_num(current.get('apparent_temperature'), ' °C')}
+Humidity: {safe_num(current.get('relative_humidity_2m'), '%', 0)}
+Wind: {safe_num(current.get('wind_speed_10m'), ' km/h')}
+UV index: {safe_num(current.get('uv_index'))}
+Screening score: {current_score:.0f}/100
+Selected threshold: {threshold}/100
 
-    report = report_text(
-        location,
-        current,
-        hourly,
-        daily,
-        threshold,
-    )
+LIMITATIONS
+The score is a heuristic, not a validated medical heat index.
+The forecast is not a street-level sensor measurement or official warning.
+Use local official weather and public-health guidance.
+    """.strip()
 
     st.download_button(
-        "Download climate report (.txt)",
-        data=report.encode("utf-8"),
+        "Download text report",
+        report.encode("utf-8"),
         file_name="heatshield_report.txt",
         mime="text/plain",
         type="primary",
-        use_container_width=True,
     )
 
-    c1, c2 = st.columns(2)
+    st.download_button(
+        "Download hourly CSV",
+        hourly.to_csv(index=False).encode("utf-8"),
+        file_name="heatshield_hourly.csv",
+        mime="text/csv",
+    )
 
-    hourly_export = hourly.copy()
-    daily_export = daily.copy()
-
-    hourly_export["time"] = hourly_export["time"].astype(str)
-    daily_export["time"] = daily_export["time"].astype(str)
-
-    with c1:
-        st.download_button(
-            "Download hourly forecast CSV",
-            data=hourly_export.to_csv(index=False).encode("utf-8"),
-            file_name="heatshield_hourly.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-
-    with c2:
-        st.download_button(
-            "Download daily forecast CSV",
-            data=daily_export.to_csv(index=False).encode("utf-8"),
-            file_name="heatshield_daily.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+    st.download_button(
+        "Download 7-day CSV",
+        daily.to_csv(index=False).encode("utf-8"),
+        file_name="heatshield_7day.csv",
+        mime="text/csv",
+    )
 
     with st.expander("Preview report"):
-        st.code(report, language="text")
+        st.text(report)
 
+# -------------------- CITY COMPARISON --------------------
 
-# -------------------- METHODOLOGY --------------------
+with tabs[5]:
+    st.markdown("### Compare multiple cities worldwide")
+    st.write(
+        "Enter city names separated by commas. The currently selected country "
+        "will be used as the filter; choose All countries for a global search."
+    )
 
-with methodology:
-    st.markdown("## Methodology & limitations")
+    compare_input = st.text_input(
+        "Cities to compare",
+        placeholder="e.g. Sialkot, London, Tokyo, Dubai",
+    )
 
-    st.markdown("""
-    **Weather provider:** Open-Meteo public geocoding and forecast endpoints.
+    if st.button("Compare entered cities"):
+        names = list(dict.fromkeys(
+            name.strip() for name in compare_input.split(",")
+            if name.strip()
+        ))[:8]
 
-    **Forecast variables:** Air temperature, apparent temperature, relative
-    humidity, precipitation, precipitation probability, wind speed, UV index
-    and cloud cover where available.
+        results = []
+        errors = []
 
-    **Heat screening score:** A simple heuristic derived from apparent
-    temperature, humidity, UV and wind. It is scaled from 0 to 100 for
-    dashboard screening. It is not a validated physiological heat-stress
-    measure and is not the probability of illness.
+        country_code = (
+            country_codes.get(selected_country)
+            if selected_country != "All countries" else None
+        )
 
-    **Hotspot comparison:** Compares forecast conditions at selected locations.
-    It does not directly measure urban heat islands or land-surface temperature.
-    Validated sensors or suitable satellite observations would be needed for
-    those analyses.
+        progress = st.progress(0) if names else None
 
-    **Alerts:** Threshold alerts are displayed in this session only. They are
-    not official warnings and are not sent to the user outside the app.
+        for index, name in enumerate(names):
+            try:
+                places = search_locations(name, country_code)
+                if not places:
+                    errors.append(f"{name}: no matching location.")
+                else:
+                    p = places[0]
+                    fc = get_weather(float(p["latitude"]), float(p["longitude"]))
+                    h = pd.DataFrame(fc["hourly"])
+                    scores = heat_screening_score(h)
+                    cur = fc["current"]
 
-    **Privacy:** Place names and coordinates are sent to the public weather
-    provider to obtain geocoding and forecast data.
-    """)
+                    results.append({
+                        "Location": location_label(p),
+                        "Air °C": cur.get("temperature_2m"),
+                        "Feels-like °C": cur.get("apparent_temperature"),
+                        "Humidity %": cur.get("relative_humidity_2m"),
+                        "UV": cur.get("uv_index"),
+                        "Screening score": float(scores.iloc[0]),
+                        "Latitude": float(p["latitude"]),
+                        "Longitude": float(p["longitude"]),
+                    })
+            except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+                errors.append(f"{name}: {exc}")
 
-    st.markdown("### Loaded location metadata")
+            if progress:
+                progress.progress((index + 1) / len(names))
 
-    st.json({
-        "name": place.get("name"),
-        "region": place.get("admin1"),
-        "country": place.get("country"),
-        "latitude": place.get("latitude"),
-        "longitude": place.get("longitude"),
-        "timezone": weather.get("timezone"),
-        "elevation_m": weather.get("elevation"),
-    })
+        if progress:
+            progress.empty()
 
+        if errors:
+            with st.expander("Search errors"):
+                for error in errors:
+                    st.write(error)
 
-# -------------------- FOOTER --------------------
+        if results:
+            result_df = pd.DataFrame(results).sort_values(
+                "Screening score", ascending=False
+            )
+            st.dataframe(
+                result_df.round(2),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            fig = px.bar(
+                result_df,
+                x="Screening score",
+                y="Location",
+                orientation="h",
+                color="Screening score",
+                color_continuous_scale=["#A7DAD5", "#F6C56F", "#C2413B"],
+                range_color=[0, 100],
+                title="Forecast screening comparison",
+            )
+            fig.update_layout(
+                template="plotly_white",
+                font_color="#263A50",
+                yaxis={"categoryorder": "total ascending"},
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.download_button(
+                "Download comparison CSV",
+                result_df.to_csv(index=False).encode("utf-8"),
+                file_name="heatshield_city_comparison.csv",
+                mime="text/csv",
+            )
 
 st.divider()
-
-st.markdown("""
-<div class="hs-note">
-<strong>HeatShield AI</strong> — Climate information and forecast screening.
-Not an official meteorological service, medical device, or emergency alert system.
-</div>
-""", unsafe_allow_html=True)
+st.caption(
+    "HeatShield AI · Powered by Open-Meteo public weather data. "
+    "Forecasts update when refreshed or fetched again. No API key is entered "
+    "or stored by this app. Data and availability depend on the provider."
+)
